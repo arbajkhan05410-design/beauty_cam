@@ -1,14 +1,20 @@
 import streamlit as st
 import cv2
 import numpy as np
-import os
 from datetime import datetime
+import os
+import imageio
 
-# -------------- FOLDERS -----------------
+st.set_page_config(page_title="Beauty Camera", layout="wide")
+
+# Create folders
 if not os.path.exists("photos"):
     os.makedirs("photos")
 
-# -------------- FILTERS -----------------
+if not os.path.exists("videos"):
+    os.makedirs("videos")
+
+# ---------------- FILTERS ----------------
 def apply_filter(frame, index):
     if index == 0:
         return frame
@@ -36,60 +42,94 @@ def apply_filter(frame, index):
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         blur = cv2.medianBlur(gray, 7)
         edges = cv2.adaptiveThreshold(
-            blur, 255, cv2.ADAPTIVE_THRESH_MEAN_C,
+            blur, 255,
+            cv2.ADAPTIVE_THRESH_MEAN_C,
             cv2.THRESH_BINARY, 9, 9
         )
         color = cv2.bilateralFilter(frame, 9, 300, 300)
-        cartoon = cv2.bitwise_and(color, color, mask=edges)
-        return cartoon
+        return cv2.bitwise_and(color, color, mask=edges)
 
     return frame
 
-# -------------- STREAMLIT APP -----------------
-st.title("📸 Beauty Camera - Filters + Photo Capture (No Video Recording)")
 
-st.write("Use filters → capture photos → saved automatically in `photos/` folder.")
+# ---------------- UI ----------------
+st.title("📸 Beauty Camera with Video Recording")
+st.write("Live Filters + Photo + Video Recording (Streamlit Version)")
 
-filter_names = [
-    "Normal",
-    "Beauty Smooth",
-    "Black & White",
-    "Warm Tone",
-    "Cool Tone",
-    "Cartoon"
-]
+col1, col2 = st.columns([3, 1])
 
-filter_selected = st.selectbox("Select Filter", filter_names)
+with col2:
+    filter_names = [
+        "Normal",
+        "Beauty Smooth",
+        "Black & White",
+        "Warm Tone",
+        "Cool Tone",
+        "Cartoon"
+    ]
 
-run = st.checkbox("Start Camera")
+    filter_choice = st.selectbox("Choose Filter", filter_names)
+    start_cam = st.checkbox("Start Camera")
 
-FRAME_WINDOW = st.image([])
+    capture_photo = st.button("📸 Capture Photo")
+    start_video = st.button("🎬 Start Recording")
+    stop_video = st.button("⏹ Stop Recording")
 
-filter_index = filter_names.index(filter_selected)
+with col1:
+    frame_window = st.image([])
 
-cap = None
+filter_index = filter_names.index(filter_choice)
 
-if run:
+video_buffer = []   # store frames for video recording
+recording = False
+
+
+# ---------------- CAMERA LOOP ----------------
+if start_cam:
     cap = cv2.VideoCapture(0)
 
-while run:
-    ret, frame = cap.read()
-    if not ret:
-        st.write("Camera not working!")
-        break
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            st.warning("Camera not detected!")
+            break
 
-    frame = cv2.resize(frame, (720, 480))
+        frame = cv2.resize(frame, (720, 480))
 
-    filtered = apply_filter(frame, filter_index)
+        filtered = apply_filter(frame, filter_index)
 
-    FRAME_WINDOW.image(filtered, channels="BGR")
+        # Show frame
+        frame_window.image(filtered, channels="BGR")
 
-    capture_btn = st.button("📸 Capture Photo")
+        # ---------------- PHOTO CAPTURE ----------------
+        if capture_photo:
+            filename = f"photos/photo_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
+            cv2.imwrite(filename, filtered)
+            st.success(f"Saved Photo: {filename}")
 
-    if capture_btn:
-        filename = f"photos/photo_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
-        cv2.imwrite(filename, filtered)
-        st.success(f"Photo Saved → {filename}")
+        # ---------------- VIDEO RECORDING ----------------
+        if start_video:
+            recording = True
+            video_buffer = []
+            st.info("Recording Started...")
 
-if cap:
+        if recording:
+            video_buffer.append(filtered)
+
+        if stop_video and recording:
+            recording = False
+            filename = f"videos/video_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4"
+
+            # Save using imageio
+            writer = imageio.get_writer(filename, fps=20)
+            for f in video_buffer:
+                writer.append_data(cv2.cvtColor(f, cv2.COLOR_BGR2RGB))
+            writer.close()
+
+            st.success(f"Saved Video: {filename}")
+
+        # Escape camera loop
+        if not start_cam:
+            break
+
     cap.release()
