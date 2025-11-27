@@ -1,81 +1,70 @@
 import streamlit as st
-import cv2
+from PIL import Image, ImageEnhance, ImageFilter
 import numpy as np
-from PIL import Image
 import time
 import os
 
 st.set_page_config(layout="wide", page_title="Beauty Camera")
 
-st.title("📸 Beauty Camera Web App")
+st.title("📸 Beauty Camera – Streamlit Version (No OpenCV)")
 
 if not os.path.exists("saved"):
     os.makedirs("saved")
 
 filter_name = st.selectbox(
     "Select Filter",
-    ("None", "Beauty", "Warm", "Cool", "Cartoon", "Black & White", "HDR")
+    ("None", "Beauty Smooth", "Warm", "Cool", "Cartoon", "Black & White", "HDR")
 )
 
-capture = st.button("📷 Capture Photo")
+capture = st.button("📷 Capture")
 
-# Streamlit Camera Input
+# Streamlit camera
 frame = st.camera_input("Camera")
 
-# Filters
-def beauty_filter(img):
-    return cv2.bilateralFilter(img, 15, 75, 75)
+# Filter functions
+def apply_filter(img, filter_name):
 
-def warm_filter(img):
-    img[:, :, 2] = cv2.add(img[:, :, 2], 40)
+    if filter_name == "None":
+        return img
+
+    if filter_name == "Beauty Smooth":
+        return img.filter(ImageFilter.SMOOTH_MORE)
+
+    if filter_name == "Warm":
+        r, g, b = img.split()
+        r = r.point(lambda i: i + 40)
+        return Image.merge("RGB", (r, g, b))
+
+    if filter_name == "Cool":
+        r, g, b = img.split()
+        b = b.point(lambda i: i + 40)
+        return Image.merge("RGB", (r, g, b))
+
+    if filter_name == "Black & White":
+        return img.convert("L").convert("RGB")
+
+    if filter_name == "HDR":
+        enhancer = ImageEnhance.Sharpness(img)
+        return enhancer.enhance(3)
+
+    if filter_name == "Cartoon":
+        edge = img.filter(ImageFilter.FIND_EDGES)
+        return Image.blend(img, edge, 0.5)
+
     return img
-
-def cool_filter(img):
-    img[:, :, 0] = cv2.add(img[:, :, 0], 40)
-    return img
-
-def bw_filter(img):
-    return cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-def hdr_filter(img):
-    return cv2.detailEnhance(img, sigma_s=12, sigma_r=0.15)
-
-def cartoon_filter(img):
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    gray = cv2.medianBlur(gray, 7)
-    edges = cv2.adaptiveThreshold(gray, 255,
-                                  cv2.ADAPTIVE_THRESH_MEAN_C,
-                                  cv2.THRESH_BINARY, 9, 9)
-    color = cv2.bilateralFilter(img, 9, 250, 250)
-    return cv2.bitwise_and(color, color, mask=edges)
 
 
 if frame is not None:
-
     img = Image.open(frame)
-    img = np.array(img)
-    img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
 
-    # apply filter
-    if filter_name == "Beauty":
-        img = beauty_filter(img)
-    elif filter_name == "Warm":
-        img = warm_filter(img)
-    elif filter_name == "Cool":
-        img = cool_filter(img)
-    elif filter_name == "Cartoon":
-        img = cartoon_filter(img)
-    elif filter_name == "Black & White":
-        img = bw_filter(img)
-        img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
-    elif filter_name == "HDR":
-        img = hdr_filter(img)
+    # Apply filter
+    filtered = apply_filter(img, filter_name)
 
-    # show filtered result
-    st.image(img, channels="BGR", width=720)
+    # Show image
+    st.image(filtered, width=720)
 
-    # save photo
+    # Save image
     if capture:
         filename = f"saved/photo_{int(time.time())}.jpg"
-        cv2.imwrite(filename, img)
-        st.success(f"📸 Photo Saved: {filename}")
+        filtered.save(filename)
+        st.success(f"📸 Saved: {filename}")
